@@ -2,14 +2,87 @@
 
 # CLI-arg parsing
 import argparse
+
 # R/W socket data
 import json
+
 # Enumerate structure
 from enum import Enum
+
 # Sockets
 from socket import socket, SOCK_SEQPACKET, AF_UNIX
+
 # Async
 import select
+
+### Necessary Enum structures
+### -------------------------
+
+
+class Relationship(Enum):
+    """The relationship between two BGP neighbors"""
+
+    CUST = "cust"
+    PROV = "prov"
+    PEER = "peer"
+
+    @classmethod
+    def from_str(cls, string):
+        """Converts the provided relationship string into its enum class form.
+
+        string str: The string indicating some relationship between BGP nodes
+
+        returns: The relationship object corresponding to the input argument
+        """
+        for rel in cls:
+            if rel.value == string:
+                return rel
+        raise ValueError(f"Could not locate relationship type of neighbor: {string}")
+
+
+class Origin(Enum):
+    """A router location, internal or external of the local AS"""
+
+    IGP = "IGP"
+    EGP = "EGP"
+    UNK = "UNK"
+
+    @classmethod
+    def from_str(cls, string):
+        """Converts the provided origin string into its enum class form.
+
+        string str: The string indicating the origin of some BGP node
+
+        returns: The origin object corresponding to the input argument
+        """
+        for orig in cls:
+            if orig.value == string:
+                return orig
+        return cls.UNK
+
+
+class MessageType(Enum):
+    """The various different forms a message may take"""
+
+    update = "update"
+    revoke = "revoke"
+    data = "data"
+    no_route = "no route"
+    dump = "dump"
+    table = "table"
+
+    @classmethod
+    def from_str(cls, string):
+        """Converts the provided message type string into its enum class form.
+
+        string str: The string indicating a message type
+
+        returns: The message type object corresponding to the input argument
+        """
+        for category in cls:
+            if category.value == string:
+                return category
+        return None
 
 
 if __name__ == "__main__":
