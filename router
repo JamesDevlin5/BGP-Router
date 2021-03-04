@@ -180,5 +180,57 @@ class Network:
         self.desc = net_desc
 
 
+### Argument Parsing
+### ----------------
+
+
+class ArgumentParser:
+    """An object to handle CLI arguments."""
+
+    def __init__(self):
+        """Creates a new internal parser object."""
+        self.parser = self._create_parser()
+
+    def _create_parser(self):
+        """Sets up a new parser object and returns it."""
+
+        def parse_neighbor(string):
+            """A utility function to parse the neighbor input into an ip address and relationship identifier
+
+            string str: A string of the form [ip address]-[relationship]
+
+            returns: (The ip address), (The relationship); a tuple describing the neighbor
+            """
+            addr, rel = string.split("-")
+            return IpAddress(addr), Relationship.from_str(rel)
+
+        parser = argparse.ArgumentParser(
+            description="A BGP router implementation in python."
+        )
+        parser.add_argument(
+            "asn",
+            type=int,
+            help="The AS (autonomous system) number, which is uniquely assigned to identify this router",
+        )
+        parser.add_argument(
+            "neighbor",
+            nargs="+",
+            type=parse_neighbor,
+            help="The IP address and relationship of a neighboring router",
+            metavar="<IP_Address>-<peer|prov|cust>",
+        )
+        return parser
+
+    def parse(self):
+        """Parses the arguments into information
+
+        returns: (int, (IpAddress, Relationship)); a tuple consisting of:
+                the autonomous system number uniquely identifying this node
+                a list of addresses and their relationship to this node, representing all neighbors
+        """
+        args = self.parser.parse_args()
+        return args.asn, args.neighbor
+
+
 if __name__ == "__main__":
     print("Hello World!")
