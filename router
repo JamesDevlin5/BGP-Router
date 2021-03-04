@@ -85,5 +85,100 @@ class MessageType(Enum):
         return None
 
 
+### Core Structures
+### ---------------
+
+
+class IpAddress:
+    def __init__(self, string):
+        """Creates an IpAddress object from a quad-dotted notation string
+
+        string str: The input string, a quad-dotted notation ip address
+        """
+        ip_bytes = list(map(int, string.split(".")))
+        assert (
+            len(ip_bytes) == 4
+        ), "Invalid IpAddress, only accepts quad-dotted notation"
+        self._addr = self._bytes_to_int(ip_bytes)
+
+    def _bytes_to_int(self, ip_bytes):
+        """Converts a tuple of bytes into a single integer
+
+        ip_bytes (int): A tuple consisting of four elements: the bytes representing an ip address
+
+        returns: A single integer, equivalent to the input bytes
+        """
+        b1, b2, b3, b4 = map(lambda x: x & 0xFF, ip_bytes)
+        return b1 << 24 | b2 << 16 | b3 << 8 | b4
+
+    def _int_to_bytes(self, ip_int):
+        """Converts an integer into a tuple of bytes
+
+        ip_int int: The integer representing an ip address
+
+        returns: A list of four bytes; each byte in the ip address
+        """
+        ip_bytes = []
+        for i in range(4):
+            shift = 0xFF << (i * 8)
+            ip_byte = (ip_int & shift) >> (i * 8)
+            ip_bytes.append(ip_byte)
+        return ip_bytes[::-1]
+
+    def to_bytes(self):
+        """Converts this ip address to a list of bytes"""
+        return self._int_to_bytes(self._addr)
+
+    def to_str(self):
+        """Converts this ip address to a dotted-decimal string"""
+        return ".".join(map(str, self.to_bytes()))
+
+
+class NetworkDesc:
+    """Encapsulates the traits describing a network."""
+
+    def __init__(self, localpref, selfOrigin, asPath, origin):
+        """Constructs a network description object from the provided information.
+
+        localpref str: The weight assigned to this network (higher is better)
+        selfOrigin str: Whether this route was added by the local administrator or not
+        asPath list(str): The list of autonomous systems traversed along this path (shorter is better)
+        origin str: Location of the source of this route, within the local AS, external, or unknown
+        """
+        self.localpref = int(localpref)
+        self.selfOrigin = bool(selfOrigin)
+        self.asPath = list(asPath)
+        self.origin = Origin.from_str(origin)
+
+    def equal(self, other):
+        """Checks whether this network description is identical (or equal) to the other network.
+
+        other NetworkDesc: The other network description, to compare this one to
+
+        returns: True if the provided network description is identical to this one, False otherwise
+        """
+        return all(
+            self.localpref == other.localpref,
+            self.selfOrigin == other.selfOrigin,
+            self.asPath == other.asPath,
+            self.origin == other.origin,
+        )
+
+
+class Network:
+    """Encapsulates a network, with information about the route leading to this destination."""
+
+    def __init__(self, net_prefix, net_mask, net_desc):
+        """Constructs a network object with the provided information
+
+        net_prefix IpAddress: The prefix describing this network
+        net_mask IpAddress: The subnet mask describing this network
+        net_desc NetworkDesc: The traits associated with this network
+        """
+        self.prefix = net_prefix
+        self.mask = net_mask
+        self.desc = net_desc
+
+
 if __name__ == "__main__":
     print("Hello World!")
