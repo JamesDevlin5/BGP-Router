@@ -134,7 +134,15 @@ class IpAddress:
         return ".".join(map(str, self.to_bytes()))
 
 
-class NetworkDesc:
+class Serializer:
+    """An encapsulation of the ability to serialize an object to a dictionary."""
+
+    def to_dict(self):
+        """Converts this object to a dictionary representation."""
+        return {}
+
+
+class NetworkDesc(Serializer):
     """Encapsulates the traits describing a network."""
 
     def __init__(self, localpref, selfOrigin, asPath, origin):
@@ -164,8 +172,16 @@ class NetworkDesc:
             self.origin == other.origin,
         )
 
+    def to_dict(self):
+        return {
+            "localpref": self.localpref,
+            "selfOrigin": self.selfOrigin,
+            "ASPath": self.asPath,
+            "origin": self.origin.value,
+        }
 
-class Network:
+
+class Network(Serializer):
     """Encapsulates a network, with information about the route leading to this destination."""
 
     def __init__(self, net_prefix, net_mask, net_desc):
@@ -178,6 +194,12 @@ class Network:
         self.prefix = net_prefix
         self.mask = net_mask
         self.desc = net_desc
+
+    def to_dict(self):
+        dct = self.desc.to_dict()
+        dct["network"] = self.prefix.to_str()
+        dct["netmask"] = self.mask.to_str()
+        return dct
 
 
 ### Argument Parsing
