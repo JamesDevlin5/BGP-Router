@@ -193,7 +193,7 @@ class NetworkDesc(Serializer):
 class Network(Serializer):
     """Encapsulates a network, with information about the route leading to this destination."""
 
-    def __init__(self, net_prefix, net_mask, net_desc):
+    def __init__(self, net_prefix, net_mask, net_desc=None):
         """Constructs a network object with the provided information
 
         net_prefix IpAddress: The prefix describing this network
@@ -205,7 +205,10 @@ class Network(Serializer):
         self.desc = net_desc
 
     def to_dict(self):
-        dct = self.desc.to_dict()
+        if self.desc:
+            dct = self.desc.to_dict()
+        else:
+            dct = {}
         dct["network"] = self.prefix.to_str()
         dct["netmask"] = self.mask.to_str()
         return dct
@@ -326,6 +329,113 @@ class Neighbor:
     def close(self):
         """Closes the socket, terminating the connection to this neighbor."""
         self.sock.close()
+
+
+### Messages
+### --------
+
+
+class Message(Serializer):
+    """Encapsulates some message sent over the network."""
+
+    def __init__(self, src, dst, msg_type):
+        """Creates a new message object
+
+        src IpAddress: The source address of this message
+        dst IpAddress: The destination address of this message
+        msg_type MessageType: The type of message that this object represents
+        """
+        self.src = src
+        self.dst = dst
+        self.msg_type = msg_type
+
+    def to_dict(self):
+        return {
+            "src": self.src.to_str(),
+            "dst": self.dst.to_str(),
+            "type": self.msg_type.value,
+            "msg": {},
+        }
+
+
+class UpdateMsg(Message):
+    """A message containing route announcement updates."""
+
+    def __init__(self, src, dst, networks):
+        super().__init__(src, dst, MessageType.update)
+        self.networks = networks
+
+    def to_dict(self):
+        dct = super().to_dict()
+        dct["msg"] = self.networks.to_dict()
+        return dct
+
+
+class RevokeMsg(Message):
+    """A message revoking route announcements."""
+
+    def __init__(self, src, dst, networks):
+        super().__init__(src, dst, MessageType.revoke)
+        self.networks = networks
+
+    def to_dict(self):
+        dct = super().to_dict()
+        dct["msg"] = self.networks.to_dict()
+        return dct
+
+
+class DataMsg(Message):
+    """A message containing some user-data, to be forwarded to its destination."""
+
+    def __init__(self, src, dst, data):
+        super().__init__(src, dst, MessageType.data)
+        self.data = data
+
+    def to_dict(self):
+        dct = super().to_dict()
+        dct["msg"] = self.data
+        return dct
+
+
+class NoRouteMsg(Message):
+    """A message indicating that there is no available route to deliver some packet."""
+
+    def __init__(self, src, dst):
+        super().__init__(src, dst, MessageType.no_route)
+
+
+class DumpMsg(Message):
+    """A message requesting this router dump its current routing table state."""
+
+    def __init__(self, src, dst):
+        super().__init__(src, dst, MessageType.dump)
+
+
+class TableMsg(Message):
+    """A message containing information describing the internal routing table."""
+
+    def __init__(self, src, dst):
+        super().__init__(src, dst, MessageType.table)
+
+    def register(self, net_prefix, net_mask, peer_addr):
+        """Registers the network information and next-hop address provided
+
+        net_prefix IpAddress: The network prefix describing the avaiable route
+        net_mask IpAddress: The CIDR netmask associated with this network
+        peer_addr IpAddress: The address of the next-hop router along this path
+        """
+        self.networks.append(
+            {
+                "network": net_prefix.to_str(),
+                "netmask": net_mask.to_str(),
+                "peer": peer_addr.to_str(),
+            }
+        )
+
+    def to_dict(self):
+        dct = super().to_dict()
+        dct["msg"] = self.networks
+        return dct
 
 
 ### Main Logic
