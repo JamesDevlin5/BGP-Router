@@ -393,13 +393,13 @@ class Message(Serializer):
 class UpdateMsg(Message):
     """A message containing route announcement updates."""
 
-    def __init__(self, src, dst, networks):
+    def __init__(self, src, dst, network):
         super().__init__(src, dst, MessageType.update)
-        self.networks = networks
+        self.network = network
 
     def to_dict(self):
         dct = super().to_dict()
-        dct["msg"] = self.networks.to_dict()
+        dct["msg"] = self.network.to_dict()
         return dct
 
 
@@ -412,7 +412,7 @@ class RevokeMsg(Message):
 
     def to_dict(self):
         dct = super().to_dict()
-        dct["msg"] = self.networks.to_dict()
+        dct["msg"] = list(map(to_dict, self.networks))
         return dct
 
 
@@ -468,6 +468,41 @@ class TableMsg(Message):
         dct = super().to_dict()
         dct["msg"] = self.networks
         return dct
+
+
+def parse_msg(msg):
+    """Parses the provided message json into an object."""
+    src = IpAddress(msg["src"])
+    dst = IpAddress(msg["dst"])
+    t = MessageType.from_str(msg["type"])
+    data = msg["msg"]
+
+    log(f"Message parsed; From {msg['src']} To {msg['dst']}, of Type {msg['type']}.")
+
+    if t is MessageType.update:
+        desc = NetworkDesc(
+            data["localpref"], data["selfOrigin"], data["ASPath"], data["origin"]
+        )
+        net = Network(
+            net_prefix=IpAddress(data["network"]),
+            net_mask=IpAddress(data["netmask"]),
+            net_desc=desc,
+        )
+        return UpdateMsg(src, dst, net)
+    elif t is MessageType.revoke:
+        routes = list(
+            map(
+                lambda r: Network(
+                    net_prefix=IpAddress(r["network"]), net_mask=IpAddress(r["netmask"])
+                ),
+                data,
+            )
+        )
+        return RevokeMsg(src, dst, routes)
+    elif t is MessageType.data:
+        return DataMsg(src, dst, data)
+    elif t is MessageType.dump:
+        return DumpMsg(src, dst)
 
 
 ### Main Logic
