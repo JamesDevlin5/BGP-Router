@@ -361,6 +361,64 @@ class Router:
         while True:
             for key, _ in self.selector.select():
                 sender = key.data
+                msg = parse_msg(sender.recv_msg())
+                self._accept(sender, msg)
+
+    def _accept(self, sender, msg):
+        """Accepts a message that has been received, to be processed
+
+        sender Neighbor: The neighbor object from which this message came
+        msg Message: The message object received
+        """
+        t = msg.msg_type
+        if t is MessageType.update:
+            # Received an update message
+            # Add our asn to the as path
+            msg.network.net_desc.asPath.append(0, self.asn)
+            # Insert network into forwarding table
+            # Coalesce table
+            # Notify peers
+            pass
+        elif t is MessageType.revoke:
+            # Received a revoke message
+            # Remove any overlapping networks from forwarding table
+            # Notify peers
+            pass
+        elif t is MessageType.data:
+            # Received a data message
+            # Find all possible routes
+            # Determine best route
+            # Deliver packet
+            # OR return no route message to sender
+            pass
+        elif t is MessageType.dump:
+            # Received a dump message
+            # Create table message encapsulating current state
+            # Return to sender
+            pass
+
+
+### Networking Logic
+### ----------------
+
+
+class ForwardingTable(Serializer):
+    """Encapsulates a routers forwarding table, detailing which hops lead to which networks."""
+
+    def __init__(self):
+        pass
+
+    def update(self, network):
+        pass
+
+    def revoke(self, network):
+        pass
+
+    def best_route(self, target):
+        pass
+
+    def to_dict(self):
+        return super().to_dict()
 
 
 ### Messages
@@ -513,8 +571,10 @@ def start():
     """Begins execution of the program."""
     asn, neighbors = ArgumentParser().parse()
     neighbors = [Neighbor(*n) for n in neighbors]
+    router = Router(asn, neighbors)
+    router.run()
 
 
 if __name__ == "__main__":
-    # verbose = True
+    verbose = True
     start()
