@@ -419,7 +419,7 @@ class ForwardingLookup(Serializer):
 
         neighbors [Neighbor]: A list of next-hop routers
         """
-        pass
+        self.tables = {neighbor: ForwardingTable() for neighbor in neighbors}
 
     def update(self, target, network):
         """Updates the target neighbors forwarding table with the new network.
@@ -427,7 +427,7 @@ class ForwardingLookup(Serializer):
         target Neighbor: The neighboring router whose forwarding table to update
         network Network: The new network that is available through the target
         """
-        pass
+        self.tables[target].update(network)
 
     def revoke(self, target, network):
         """Updates the target neighbors forwarding table by removing the new network.
@@ -435,7 +435,7 @@ class ForwardingLookup(Serializer):
         target Neighbor: The neighboring router whose forwarding table to update
         network Network: The network to remove from this targets forwarding table
         """
-        pass
+        self.tables[target].revoke(network)
 
     def best_route(self, target):
         """Locates the best neighbor to forward a packet to, in order to reach
@@ -447,10 +447,27 @@ class ForwardingLookup(Serializer):
         returns: The neighbor object with the optimal route to the target, or `None` if
         no appropriate route could be found.
         """
-        pass
+        routes = []
+        for neighbor, table in self.tables:
+            route = table.best_route(target)
+            if route:
+                # Collect all non-null possible routes
+                routes.append(neighbor, route)
+        if len(routes) == 0:
+            # Base case
+            return None
+        elif len(routes) == 1:
+            return routes.pop()
+        else:
+            pass
 
     def to_dict(self):
-        return super().to_dict()
+        result = []
+        for neighbor, table in self.tables:
+            for dct in table.to_dict():
+                dct["peer"] = neighbor.peer_addr.to_str()
+                result.append(dct)
+        return result
 
 
 class ForwardingTable(Serializer):
@@ -502,7 +519,7 @@ class ForwardingTable(Serializer):
                 "netmask": net.mask,
             }
 
-        return list(map(net_to_dict, self.networks))
+        return map(net_to_dict, self.networks)
 
 
 ### Messages
