@@ -204,6 +204,15 @@ class Network(Serializer):
         self.mask = net_mask
         self.desc = net_desc
 
+    def leads_to(self, target):
+        """Determines whether or not this network contains the provided ip address.
+
+        target IpAddress: The address to check this network for
+
+        returns: True if the address is located within this network, False otherwise
+        """
+        pass
+
     def to_dict(self):
         if self.desc:
             dct = self.desc.to_dict()
@@ -449,7 +458,7 @@ class ForwardingTable(Serializer):
 
     def __init__(self):
         """Creates a new, empty forwarding table."""
-        pass
+        self.networks = set()
 
     def update(self, network):
         """Appends the given network to this forwarding tables list of networks.
@@ -457,6 +466,11 @@ class ForwardingTable(Serializer):
 
         network Network: The new network that is reachable
         """
+        self.networks.add(network)
+        self._coalesce()
+
+    def _coalesce(self):
+        """Checks the table recursively, to ensure that all networks are as combined as the may be."""
         pass
 
     def revoke(self, network):
@@ -476,10 +490,19 @@ class ForwardingTable(Serializer):
         returns: The Network object leading to the target, or `None` if no appropriate
         route could be located.
         """
-        pass
+        for net in self.networks:
+            if net.leads_to(target):
+                return net
+        return None
 
     def to_dict(self):
-        return super().to_dict()
+        def net_to_dict(net):
+            return {
+                "network": net.prefix,
+                "netmask": net.mask,
+            }
+
+        return list(map(net_to_dict, self.networks))
 
 
 ### Messages
