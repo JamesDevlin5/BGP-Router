@@ -15,6 +15,15 @@ from socket import socket, SOCK_SEQPACKET, AF_UNIX
 # Async
 import select
 
+verbose = False
+
+
+def log(msg):
+    """Logs the provided message, if logging is enabled."""
+    if verbose:
+        print(msg)
+
+
 ### Necessary Enum structures
 ### -------------------------
 
@@ -270,15 +279,20 @@ class Neighbor:
         addr IpAddress: The ip address of the neighboring node
         relation Relationship: The relationship between this neighbor and this node
         """
+        addr = addr.to_str()
         self.relation = relation
         # The address of the neighboring router
         self.peer_addr = IpAddress(addr)
         # The address our router is using to communicate with this neighbor
         self.addr = IpAddress(addr[:-1] + "1")
 
+        log(f"Created neighbor object ({relation.value}) @ {addr}.")
+
         # The socket communicating with this neighbor
         self.sock = socket(AF_UNIX, SOCK_SEQPACKET)
         self.sock.connect(addr)
+
+        log(f"Neighbor {addr} successfully connected.")
 
     def recv_msg(self):
         """Receives a message from this neighbor.
@@ -314,5 +328,16 @@ class Neighbor:
         self.sock.close()
 
 
+### Main Logic
+### ----------
+
+
+def start():
+    """Begins execution of the program."""
+    asn, neighbors = ArgumentParser().parse()
+    neighbors = [Neighbor(*n) for n in neighbors]
+
+
 if __name__ == "__main__":
-    print("Hello World!")
+    # verbose = True
+    start()
