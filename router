@@ -13,7 +13,7 @@ from enum import Enum
 from socket import socket, SOCK_SEQPACKET, AF_UNIX
 
 # Async
-import select
+import selectors
 
 verbose = False
 
@@ -293,6 +293,7 @@ class Neighbor:
 
         # The socket communicating with this neighbor
         self.sock = socket(AF_UNIX, SOCK_SEQPACKET)
+        self.sock.setblocking(False)
         self.sock.connect(addr)
 
         log(f"Neighbor {addr} successfully connected.")
@@ -329,6 +330,37 @@ class Neighbor:
     def close(self):
         """Closes the socket, terminating the connection to this neighbor."""
         self.sock.close()
+
+
+class Router:
+    """Encapsulates a BGP router node, with a provided asn and neighboring routers."""
+
+    def __init__(self, asn, neighbors):
+        """Creates a new router object, to handle neighboring nodes and messages
+
+        asn int: The unique identifier associated with this node
+        neighbors [Neighbor]: A list of neighboring bgp router objects
+        """
+        self.asn = asn
+        log(f"Created router object with id {asn}.")
+        self.selector = selectors.EpollSelector()
+        for n in neighbors:
+            self._register_neighbor(n)
+
+    def _register_neighbor(self, neighbor):
+        """Registers this neighbor with the selector object
+
+        neighbor Neighbor: The neighbor to register, indicating messages may be received from them
+        """
+        self.selector.register(neighbor.sock, selectors.EVENT_READ, neighbor)
+        log(f"Registered neighbor {neighbor.addr.to_str()} on polling object.")
+
+    def run(self):
+        """Continuously loops, checking for new messages from neighbors and reacting to them."""
+        log(f"Running...")
+        while True:
+            for key, _ in self.selector.select():
+                sender = key.data
 
 
 ### Messages
