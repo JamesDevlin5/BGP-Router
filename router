@@ -355,6 +355,7 @@ class Router:
         self.selector = selectors.EpollSelector()
         for n in neighbors:
             self._register_neighbor(n)
+        self.forwarding_lookup = ForwardingLookup(neighbors)
 
     def _register_neighbor(self, neighbor):
         """Registers this neighbor with the selector object
@@ -373,6 +374,38 @@ class Router:
                 msg = parse_msg(sender.recv_msg())
                 self._accept(sender, msg)
 
+    def notify_peers(self, sender, msg):
+        """Notifies the necessary peers of the network change
+
+        sender Neighbor: The neighbor which is the source of the notification
+        msg Message: The message sent
+        """
+
+        def msg_factory(msg):
+            """A helper function to produce the desired message object factory."""
+            if msg.msg_type is MessageType.update:
+                return lambda n: UpdateMsg(n.addr, n.peer_addr, msg.network)
+            else:
+                return lambda n: RevokeMsg(n.addr, n.peer_addr, msg.network)
+
+        # Helper function to check if the neighbor is a customer
+        check_cust = lambda neighbor: neighbor.relation is Relationship.CUST
+        neighbors = self.forwarding_lookup.tables.keys()
+        factory = msg_factory(msg)
+
+        if check_cust(sender):
+            # Notify all other neighbors (except sender)
+            for neighbor in neighbors:
+                if neighbor is not sender:
+                    # Notify neighbor
+                    neighbor.send_msg(factory(neighbor))
+        else:
+            # Notify all customers
+            custs = filter(check_cust, neighbors)
+            for neighbor in custs:
+                # Notify neighbor
+                neighbor.send_msg(factory(neighbor))
+
     def _accept(self, sender, msg):
         """Accepts a message that has been received, to be processed
 
@@ -385,14 +418,15 @@ class Router:
             # Add our asn to the as path
             msg.network.net_desc.asPath.append(0, self.asn)
             # Insert network into forwarding table
-            # Coalesce table
+            self.forwarding_lookup.update(sender, msg.network)
             # Notify peers
-            pass
+            self.notify_peers(sender, msg)
         elif t is MessageType.revoke:
             # Received a revoke message
             # Remove any overlapping networks from forwarding table
+            self.forwarding_lookup.revoke(sender, msg.network)
             # Notify peers
-            pass
+            self.notify_peers(sender, msg)
         elif t is MessageType.data:
             # Received a data message
             # Find all possible routes
