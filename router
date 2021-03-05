@@ -402,19 +402,80 @@ class Router:
 ### ----------------
 
 
-class ForwardingTable(Serializer):
-    """Encapsulates a routers forwarding table, detailing which hops lead to which networks."""
+class ForwardingLookup(Serializer):
+    """Encapsulates a lookup table for a router, mapping each neighbor to its available networks."""
 
-    def __init__(self):
+    def __init__(self, neighbors):
+        """Creates a new lookup table, mapping each provided neighbor to an empty forwarding table.
+
+        neighbors [Neighbor]: A list of next-hop routers
+        """
         pass
 
-    def update(self, network):
+    def update(self, target, network):
+        """Updates the target neighbors forwarding table with the new network.
+
+        target Neighbor: The neighboring router whose forwarding table to update
+        network Network: The new network that is available through the target
+        """
         pass
 
-    def revoke(self, network):
+    def revoke(self, target, network):
+        """Updates the target neighbors forwarding table by removing the new network.
+
+        target Neighbor: The neighboring router whose forwarding table to update
+        network Network: The network to remove from this targets forwarding table
+        """
         pass
 
     def best_route(self, target):
+        """Locates the best neighbor to forward a packet to, in order to reach
+        the provided destination. If no neighboring routers may forward the packet
+        to its destination, the `None` is returned.
+
+        target IpAddress: The target for which to find a route to
+
+        returns: The neighbor object with the optimal route to the target, or `None` if
+        no appropriate route could be found.
+        """
+        pass
+
+    def to_dict(self):
+        return super().to_dict()
+
+
+class ForwardingTable(Serializer):
+    """Encapsulates a single neighbor's forwarding table, detailing which networks this hop leads to."""
+
+    def __init__(self):
+        """Creates a new, empty forwarding table."""
+        pass
+
+    def update(self, network):
+        """Appends the given network to this forwarding tables list of networks.
+        This object will now recognize the provided network as "reachable".
+
+        network Network: The new network that is reachable
+        """
+        pass
+
+    def revoke(self, network):
+        """Removes the given network from this forwarding tables list of networks.
+        This object will no longer recognize the provided network as "reachable".
+
+        network Network: The network that is no longer reachable
+        """
+        pass
+
+    def best_route(self, target):
+        """Locates the route to reach the target. If no route leads to the target,
+        then `None` is returned.
+
+        target IpAddress: The target for which to find a route to
+
+        returns: The Network object leading to the target, or `None` if no appropriate
+        route could be located.
+        """
         pass
 
     def to_dict(self):
