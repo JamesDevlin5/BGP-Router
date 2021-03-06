@@ -438,7 +438,7 @@ class Router:
             # Received a dump message
             # Create table message encapsulating current state
             # Return to sender
-            pass
+            return TableMsg(msg.dst, msg.src, self.forwarding_lookup.to_dict())
 
 
 ### Networking Logic
@@ -549,8 +549,8 @@ class ForwardingTable(Serializer):
     def to_dict(self):
         def net_to_dict(net):
             return {
-                "network": net.prefix,
-                "netmask": net.mask,
+                "network": net.prefix.to_str(),
+                "netmask": net.mask.to_str(),
             }
 
         return map(net_to_dict, self.networks)
@@ -639,23 +639,9 @@ class DumpMsg(Message):
 class TableMsg(Message):
     """A message containing information describing the internal routing table."""
 
-    def __init__(self, src, dst):
+    def __init__(self, src, dst, networks):
         super().__init__(src, dst, MessageType.table)
-
-    def register(self, net_prefix, net_mask, peer_addr):
-        """Registers the network information and next-hop address provided
-
-        net_prefix IpAddress: The network prefix describing the avaiable route
-        net_mask IpAddress: The CIDR netmask associated with this network
-        peer_addr IpAddress: The address of the next-hop router along this path
-        """
-        self.networks.append(
-            {
-                "network": net_prefix.to_str(),
-                "netmask": net_mask.to_str(),
-                "peer": peer_addr.to_str(),
-            }
-        )
+        self.networks = networks
 
     def to_dict(self):
         dct = super().to_dict()
