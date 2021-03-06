@@ -431,9 +431,14 @@ class Router:
             # Received a data message
             # Find all possible routes
             # Determine best route
-            # Deliver packet
-            # OR return no route message to sender
-            pass
+            # TODO Ensure data is being forwarded legally
+            next_hop = self.forwarding_lookup.best_route(msg.dst)
+            if next_hop:
+                # Deliver packet
+                next_hop.send_msg(msg)
+            else:
+                # OR return no route message to sender
+                sender.send_msg(NoRouteMsg(sender.addr, msg.src))
         elif t is MessageType.dump:
             # Received a dump message
             # Create table message encapsulating current state
