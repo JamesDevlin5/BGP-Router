@@ -193,7 +193,7 @@ class NetworkDesc(Serializer):
 class Network(Serializer):
     """Encapsulates a network, with information about the route leading to this destination."""
 
-    def __init__(self, net_prefix, net_mask, net_desc=None):
+    def __init__(self, net_prefix, net_mask, net_desc):
         """Constructs a network object with the provided information
 
         net_prefix IpAddress: The prefix describing this network
@@ -211,7 +211,8 @@ class Network(Serializer):
 
         returns: True if the address is located within this network, False otherwise
         """
-        pass
+        # log(f"Checking whether {target.to_str()} is in {self.prefix.to_str()}/{self.mask.to_str()}")
+        return (target._addr & self.mask._addr) == (self.prefix._addr & self.mask._addr)
 
     def to_dict(self):
         if self.desc:
@@ -332,9 +333,12 @@ class Neighbor:
     def send_msg(self, msg):
         """Sends the provided message.
 
-        msg str: The string message to send to this neighbor
+        msg Message: The message object to serialize, then send to this neighbor
         """
-        self.sock.sendall(json.dumps(msg).encode("ascii"))
+        log(
+            f"Neighbor {self.addr.to_str()} sending message of type {msg.msg_type.value}"
+        )
+        self.sock.sendall(json.dumps(msg.to_dict()).encode("ascii"))
 
     def close(self):
         """Closes the socket, terminating the connection to this neighbor."""
@@ -386,7 +390,7 @@ class Router:
             if msg.msg_type is MessageType.update:
                 return lambda n: UpdateMsg(n.addr, n.peer_addr, msg.network)
             else:
-                return lambda n: RevokeMsg(n.addr, n.peer_addr, msg.network)
+                return lambda n: RevokeMsg(n.addr, n.peer_addr, msg.networks)
 
         # Helper function to check if the neighbor is a customer
         check_cust = lambda neighbor: neighbor.relation is Relationship.CUST
@@ -416,7 +420,7 @@ class Router:
         if t is MessageType.update:
             # Received an update message
             # Add our asn to the as path
-            msg.network.net_desc.asPath.append(0, self.asn)
+            msg.network.desc.asPath.append(self.asn)
             # Insert network into forwarding table
             self.forwarding_lookup.update(sender, msg.network)
             # Notify peers
@@ -424,7 +428,8 @@ class Router:
         elif t is MessageType.revoke:
             # Received a revoke message
             # Remove any overlapping networks from forwarding table
-            self.forwarding_lookup.revoke(sender, msg.network)
+            for net in msg.networks:
+                self.forwarding_lookup.revoke(sender, net)
             # Notify peers
             self.notify_peers(sender, msg)
         elif t is MessageType.data:
@@ -443,7 +448,9 @@ class Router:
             # Received a dump message
             # Create table message encapsulating current state
             # Return to sender
-            return TableMsg(msg.dst, msg.src, self.forwarding_lookup.to_dict())
+            sender.send_msg(
+                TableMsg(msg.dst, msg.src, self.forwarding_lookup.to_dict())
+            )
 
 
 ### Networking Logic
@@ -487,22 +494,74 @@ class ForwardingLookup(Serializer):
         no appropriate route could be found.
         """
         routes = []
-        for neighbor, table in self.tables:
+        for neighbor, table in self.tables.items():
             route = table.best_route(target)
             if route:
                 # Collect all non-null possible routes
-                routes.append(neighbor, route)
+                routes.append((neighbor, route))
         if len(routes) == 0:
             # Base case
             return None
         elif len(routes) == 1:
-            return routes.pop()
+            return routes.pop()[0]
         else:
-            pass
+            # Largest netmask
+            max_mask = max(map(lambda r: r[1].mask._addr, routes))
+            routes = list(filter(lambda r: r[1].mask._addr == max_mask, routes))
+            if len(routes) == 1:
+                return routes.pop()[0]
+            else:
+                # Highest localpref
+                max_pref = max(map(lambda r: r[1].desc.localpref, routes))
+                routes = list(filter(lambda r: r[1].desc.localpref == max_pref, routes))
+                if len(routes) == 1:
+                    return routes.pop()[0]
+                else:
+                    # selfOrigin = True
+                    if any(map(lambda r: r[1].desc.selfOrigin, routes)):
+                        routes = list(filter(lambda r: r[1].desc.selfOrigin, routes))
+                    if len(routes) == 1:
+                        return routes.pop()[0]
+                    else:
+                        # Shortest AS Path
+                        min_path = min(map(lambda r: len(r[1].desc.asPath), routes))
+                        routes = list(
+                            filter(lambda r: len(r[1].desc.asPath) == min_path, routes)
+                        )
+                        if len(routes) == 1:
+                            return routes.pop()[0]
+                        else:
+                            # Best Origin (IGP > EGP > UNK)
+                            if any(
+                                map(lambda r: r[1].desc.origin is Origin.IGP, routes)
+                            ):
+                                best_origin = Origin.IGP
+                            elif any(
+                                map(lambda r: r[1].desc.origin is Origin.EGP, routes)
+                            ):
+                                best_origin = Origin.EGP
+                            else:
+                                best_origin = Origin.UNK
+                            routes = list(
+                                filter(
+                                    lambda r: r[1].desc.origin is best_origin, routes
+                                )
+                            )
+                            if len(routes) == 1:
+                                return routes.pop()[0]
+                            else:
+                                # The neighbor with the lowest ip address
+                                min_addr = min(map(lambda r: r[0].addr._addr, routes))
+                                routes = list(
+                                    filter(
+                                        lambda r: r[0].addr._addr == min_addr, routes
+                                    )
+                                )
+                                return routes.pop()[0]
 
     def to_dict(self):
         result = []
-        for neighbor, table in self.tables:
+        for neighbor, table in self.tables.items():
             for dct in table.to_dict():
                 dct["peer"] = neighbor.peer_addr.to_str()
                 result.append(dct)
@@ -610,7 +669,7 @@ class RevokeMsg(Message):
 
     def to_dict(self):
         dct = super().to_dict()
-        dct["msg"] = list(map(to_dict, self.networks))
+        dct["msg"] = list(map(lambda n: n.to_dict(), self.networks))
         return dct
 
 
@@ -677,7 +736,9 @@ def parse_msg(msg):
         routes = list(
             map(
                 lambda r: Network(
-                    net_prefix=IpAddress(r["network"]), net_mask=IpAddress(r["netmask"])
+                    net_prefix=IpAddress(r["network"]),
+                    net_mask=IpAddress(r["netmask"]),
+                    net_desc=None,
                 ),
                 data,
             )
