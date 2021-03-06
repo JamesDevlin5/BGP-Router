@@ -99,11 +99,14 @@ class MessageType(Enum):
 
 
 class IpAddress:
-    def __init__(self, string):
+    def __init__(self, string, num=None):
         """Creates an IpAddress object from a quad-dotted notation string
 
         string str: The input string, a quad-dotted notation ip address
         """
+        if num:
+            self._addr = num
+            return
         ip_bytes = list(map(int, string.split(".")))
         assert (
             len(ip_bytes) == 4
@@ -175,10 +178,12 @@ class NetworkDesc(Serializer):
         returns: True if the provided network description is identical to this one, False otherwise
         """
         return all(
-            self.localpref == other.localpref,
-            self.selfOrigin == other.selfOrigin,
-            self.asPath == other.asPath,
-            self.origin == other.origin,
+            (
+                self.localpref == other.localpref,
+                self.selfOrigin == other.selfOrigin,
+                self.asPath == other.asPath,
+                self.origin == other.origin,
+            )
         )
 
     def to_dict(self):
@@ -213,6 +218,24 @@ class Network(Serializer):
         """
         # log(f"Checking whether {target.to_str()} is in {self.prefix.to_str()}/{self.mask.to_str()}")
         return (target._addr & self.mask._addr) == (self.prefix._addr & self.mask._addr)
+
+    def adjacent(self, other):
+        """Attempts to combine this network with the other network, if the two are adjacent
+
+        other Network: The other network to attempt to combine if adjacent
+
+        returns: (IpAddress, IpAddress) tuple representing the (new_prefix, new_mask)
+                or `None` if the two networks are not adjacent
+        """
+        if self.mask._addr == other.mask._addr:
+            m = (self.mask._addr << 1) & self.mask._addr
+            log(f"Matching masks: {self.mask.to_str()}")
+            if (self.prefix._addr & m) == (other.prefix._addr & m):
+                log(
+                    f"Combining networks: {self.prefix.to_str()} and {other.prefix.to_str()}"
+                )
+                return ((self.prefix._addr & m), m)
+        return None
 
     def to_dict(self):
         if self.desc:
@@ -590,7 +613,24 @@ class ForwardingTable(Serializer):
 
     def _coalesce(self):
         """Checks the table recursively, to ensure that all networks are as combined as the may be."""
-        pass
+        log(f"Coalescing table...")
+        for net1 in self.networks:
+            for net2 in self.networks:
+                if net1 != net2:
+                    combine = net1.adjacent(net2)
+                    if combine and net1.desc.equal(net2.desc):
+                        self.networks.remove(net1)
+                        self.networks.remove(net2)
+                        new_prefix, new_mask = combine
+                        self.networks.add(
+                            Network(
+                                IpAddress("", num=new_prefix),
+                                IpAddress("", num=new_mask),
+                                net1.desc,
+                            )
+                        )
+                        return self._coalesce()
+        return None
 
     def revoke(self, network):
         """Removes the given network from this forwarding tables list of networks.
