@@ -209,6 +209,13 @@ class Network(Serializer):
         self.mask = net_mask
         self.desc = net_desc
 
+    @classmethod
+    def from_range(cls, min_ip, max_ip, desc):
+        """Creates a network from a range of ip addresses."""
+        mask = ~(max_ip - min_ip) & 0xFFFFFFFF
+        prefix = min_ip & mask
+        return cls(IpAddress("", num=prefix), IpAddress("", num=mask), desc)
+
     def leads_to(self, target):
         """Determines whether or not this network contains the provided ip address.
 
@@ -245,6 +252,10 @@ class Network(Serializer):
         dct["network"] = self.prefix.to_str()
         dct["netmask"] = self.mask.to_str()
         return dct
+
+    def to_str(self):
+        """Converts this network to a string representation, for logging."""
+        return f"{self.prefix.to_str()}/{self.mask.to_str()}"
 
 
 ### Argument Parsing
@@ -461,7 +472,8 @@ class Router:
             # Determine best route
             next_hop = self.forwarding_lookup.best_route(msg.dst)
             if (
-                next_hop.relation is not Relationship.CUST
+                next_hop
+                and next_hop.relation is not Relationship.CUST
                 and sender.relation is not Relationship.CUST
             ):
                 next_hop = None
@@ -638,7 +650,37 @@ class ForwardingTable(Serializer):
 
         network Network: The network that is no longer reachable
         """
-        pass
+        log(f"Revoking all ip addresses in the network: {network.to_str()}...")
+
+        def ip_range(net):
+            """Calculates the range of ip addresses covered by a network."""
+            min_ip = net.prefix._addr & net.mask._addr
+            max_ip = min_ip | (~net.mask._addr & 0xFFFFFFFF) + 1
+            return min_ip, max_ip
+
+        r_min, r_max = ip_range(network)
+        log(f"Target = r_min: {r_min}, r_max: {r_max}")
+        for net in self.networks.copy():
+            min_ip, max_ip = ip_range(net)
+            log(f"min: {min_ip}, max: {max_ip}")
+            if max_ip < r_min or min_ip > r_max:
+                # Not in range
+                continue
+            log(f"Network: {net.to_str()} overlaps. Removing from table.")
+            # Network is in range, remove from set
+            d = net.desc
+            self.networks.remove(net)
+            # Shrink
+            if r_min > min_ip:
+                # Add left ip range
+                new_network = Network.from_range(min_ip, r_min - 1, d)
+                log(f"Adding network: {new_network.to_str()} to table")
+                self.networks.add(new_network)
+            if r_max < max_ip:
+                # Add right ip range
+                new_network = Network.from_range(r_max + 1, max_ip, d)
+                log(f"Adding network: {new_network.to_str()} to table")
+                self.networks.add(new_network)
 
     def best_route(self, target):
         """Locates the route to reach the target. If no route leads to the target,
