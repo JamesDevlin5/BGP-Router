@@ -436,8 +436,12 @@ class Router:
             # Received a data message
             # Find all possible routes
             # Determine best route
-            # TODO Ensure data is being forwarded legally
             next_hop = self.forwarding_lookup.best_route(msg.dst)
+            if (
+                next_hop.relation is not Relationship.CUST
+                and sender.relation is not Relationship.CUST
+            ):
+                next_hop = None
             if next_hop:
                 # Deliver packet
                 next_hop.send_msg(msg)
