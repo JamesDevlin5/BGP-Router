@@ -99,47 +99,32 @@ class MessageType(Enum):
 
 
 class IpAddress:
-    def __init__(self, string, num=None):
+    def __init__(self, num):
         """Creates an IpAddress object from a quad-dotted notation string
 
-        string str: The input string, a quad-dotted notation ip address
+        num int: The integer number that the ip address represents
         """
-        if num:
-            self._addr = num
-            return
+        self._addr = num
+
+    @classmethod
+    def from_str(cls, string):
+        """Creates an IpAddress object from a quad-dotted notation string."""
         ip_bytes = list(map(int, string.split(".")))
         assert (
             len(ip_bytes) == 4
         ), "Invalid IpAddress, only accepts quad-dotted notation"
-        self._addr = self._bytes_to_int(ip_bytes)
-
-    def _bytes_to_int(self, ip_bytes):
-        """Converts a tuple of bytes into a single integer
-
-        ip_bytes (int): A tuple consisting of four elements: the bytes representing an ip address
-
-        returns: A single integer, equivalent to the input bytes
-        """
         b1, b2, b3, b4 = map(lambda x: x & 0xFF, ip_bytes)
-        return b1 << 24 | b2 << 16 | b3 << 8 | b4
-
-    def _int_to_bytes(self, ip_int):
-        """Converts an integer into a tuple of bytes
-
-        ip_int int: The integer representing an ip address
-
-        returns: A list of four bytes; each byte in the ip address
-        """
-        ip_bytes = []
-        for i in range(4):
-            shift = 0xFF << (i * 8)
-            ip_byte = (ip_int & shift) >> (i * 8)
-            ip_bytes.append(ip_byte)
-        return ip_bytes[::-1]
+        addr = b1 << 24 | b2 << 16 | b3 << 8 | b4
+        return cls(addr)
 
     def to_bytes(self):
         """Converts this ip address to a list of bytes"""
-        return self._int_to_bytes(self._addr)
+        ip_bytes = []
+        for i in range(4):
+            shift = 0xFF << (i * 8)
+            ip_byte = (self._addr & shift) >> (i * 8)
+            ip_bytes.append(ip_byte)
+        return ip_bytes[::-1]
 
     def to_str(self):
         """Converts this ip address to a dotted-decimal string"""
@@ -214,7 +199,7 @@ class Network(Serializer):
         """Creates a network from a range of ip addresses."""
         mask = ~(max_ip - min_ip) & 0xFFFFFFFF
         prefix = min_ip & mask
-        return cls(IpAddress("", num=prefix), IpAddress("", num=mask), desc)
+        return cls(IpAddress(prefix), IpAddress(mask), desc)
 
     def leads_to(self, target):
         """Determines whether or not this network contains the provided ip address.
@@ -280,7 +265,7 @@ class ArgumentParser:
             returns: (The ip address), (The relationship); a tuple describing the neighbor
             """
             addr, rel = string.split("-")
-            return IpAddress(addr), Relationship.from_str(rel)
+            return IpAddress.from_str(addr), Relationship.from_str(rel)
 
         parser = argparse.ArgumentParser(
             description="A BGP router implementation in python."
@@ -329,9 +314,9 @@ class Neighbor:
         addr = addr.to_str()
         self.relation = relation
         # The address of the neighboring router
-        self.peer_addr = IpAddress(addr)
+        self.peer_addr = IpAddress.from_str(addr)
         # The address our router is using to communicate with this neighbor
-        self.addr = IpAddress(addr[:-1] + "1")
+        self.addr = IpAddress.from_str(addr[:-1] + "1")
 
         log(f"Created neighbor object ({relation.value}) @ {addr}.")
 
@@ -636,8 +621,8 @@ class ForwardingTable(Serializer):
                         new_prefix, new_mask = combine
                         self.networks.add(
                             Network(
-                                IpAddress("", num=new_prefix),
-                                IpAddress("", num=new_mask),
+                                IpAddress(new_prefix),
+                                IpAddress(new_mask),
                                 net1.desc,
                             )
                         )
@@ -801,8 +786,8 @@ class TableMsg(Message):
 
 def parse_msg(msg):
     """Parses the provided message json into an object."""
-    src = IpAddress(msg["src"])
-    dst = IpAddress(msg["dst"])
+    src = IpAddress.from_str(msg["src"])
+    dst = IpAddress.from_str(msg["dst"])
     t = MessageType.from_str(msg["type"])
     data = msg["msg"]
 
@@ -813,8 +798,8 @@ def parse_msg(msg):
             data["localpref"], data["selfOrigin"], data["ASPath"], data["origin"]
         )
         net = Network(
-            net_prefix=IpAddress(data["network"]),
-            net_mask=IpAddress(data["netmask"]),
+            net_prefix=IpAddress.from_str(data["network"]),
+            net_mask=IpAddress.from_str(data["netmask"]),
             net_desc=desc,
         )
         return UpdateMsg(src, dst, net)
@@ -822,8 +807,8 @@ def parse_msg(msg):
         routes = list(
             map(
                 lambda r: Network(
-                    net_prefix=IpAddress(r["network"]),
-                    net_mask=IpAddress(r["netmask"]),
+                    net_prefix=IpAddress.from_str(r["network"]),
+                    net_mask=IpAddress.from_str(r["netmask"]),
                     net_desc=None,
                 ),
                 data,
